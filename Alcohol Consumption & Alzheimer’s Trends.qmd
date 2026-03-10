@@ -1,0 +1,692 @@
+---
+title: "Alcohol Consumption & Alzheimer's Trends"
+author: "Group BB4"
+format: 
+  dashboard:
+    orientation: rows
+    theme: cosmo
+    scrolling: true
+    embed-resources: true
+---
+
+<style>
+/* Force the navbar to stay at the very top */
+.navbar {
+  position: sticky !important;
+  top: 0;
+  z-index: 1020;
+}
+</style>
+
+<style>
+/* Custom CSS to elevate the design */
+.card-header {
+    background-color: #2c3e50 !important;
+    color: white !important;
+    font-weight: bold;
+}
+
+.hero-text {
+    font-size: 1.15rem;
+    line-height: 1.6;
+    color: #34495e;
+}
+
+.question-box {
+    background-color: #f8f9fa;
+    border-left: 5px solid #3498db;
+    padding: 15px;
+    margin-bottom: 10px;
+    border-radius: 5px;
+}
+
+.data-source-link {
+    font-weight: bold;
+    color: #2980b9;
+    text-decoration: none;
+}
+
+.data-source-link:hover {
+    text-decoration: underline;
+}
+
+.team-member {
+    padding: 10px;
+    border-bottom: 1px solid #eee;
+}
+
+.team-member:last-child {
+    border-bottom: none;
+}
+</style>
+
+```{r setup}
+#| output: false
+#| echo: false
+#| include: false
+library(tidyverse)
+library(plotly)
+library(ggplot2)
+library(dplyr)
+
+# Load the reparsed NIAAA Alcohol Consumption data
+alcohol_data <- read_csv("alcohol2015_2022_with_location.csv")
+
+# Load your CDC Alzheimer's data (replace with your actual filename)
+alzheimer_data <- read_csv("Alzheimer's_Disease_and_Healthy_Aging_Indicators__Cognitive_Decline_20260216.csv")
+
+alcohol_clean <- alcohol_data %>%
+  filter(beverage_name == "All beverages") %>%
+  select(
+    year,
+    state = location_abbr,
+    beverage_name,
+    ethanol_pc_21plus
+  ) %>%
+  rename(alcohol_consumption_pc = ethanol_pc_21plus)
+
+alz_clean <- alzheimer_data %>%
+  filter(Stratification1 == "Overall") %>%
+  filter(LocationAbbr %in% c(state.abb, "DC")) %>%
+  select(
+    year  = YearStart,
+    state = LocationAbbr,
+    Low_Confidence_Limit,
+    High_Confidence_Limit,
+    Data_Value
+  )
+
+combined_data<- alz_clean %>%
+  left_join(alcohol_clean, by = c("year", "state"))
+
+combined_clean <- combined_data %>%
+  mutate(
+    Data_Value = as.numeric(Data_Value),
+    alcohol_consumption_pc = as.numeric(alcohol_consumption_pc),
+    Low_Confidence_Limit = as.numeric(Low_Confidence_Limit),
+    High_Confidence_Limit = as.numeric(High_Confidence_Limit)
+  ) %>%
+  filter(!is.na(Data_Value), !is.na(alcohol_consumption_pc))
+
+combined_clean <- combined_clean %>%
+  mutate(
+    alcohol_group = ntile(alcohol_consumption_pc, 3),
+    alcohol_group = factor(alcohol_group,
+                           levels = c(1, 2, 3),
+                           labels = c("Low", "Medium", "High"))
+  )
+
+combined_clean <- combined_clean %>%
+  mutate(
+    ci_width = High_Confidence_Limit - Low_Confidence_Limit
+  )
+
+  
+```
+
+# Introduction & Data Context
+
+## Row 1 {height=auto}
+
+### Research Background {title="Overview: The Cognitive Crisis"}
+
+::: {.hero-text title = "Overview: The Cognitive Crisis"}
+
+Alzheimer’s Disease represents one of the most significant public health challenges of the 21st century, affecting millions of families and placing an immense burden on state healthcare systems. While aging is the primary risk factor, researchers are increasingly looking at modifiable lifestyle behaviors that may accelerate or mitigate cognitive decline. According to the Lancet Commission on Dementia, nearly 45% of dementia cases are theoretically preventable by addressing risk factors across the lifespan, including alcohol misuse and social isolation.
+
+Our project explores the intersection of regional alcohol consumption patterns and reported rates of cognitive decline across the United States. By analyzing data from 2015 to 2022, we aim to understand if the "drinking culture" of a state—measured by ethanol per capita—serves as a predictor for its aging population's neurological health.
+
+**Data & Scope**
+
+Geography: 50 U.S. states + DC
+
+Time range: 2015–2022
+
+Outcome: cognitive decline indicator estimates
+
+:::
+
+## Row 2 {height=auto}
+
+### Big Picture Questions {title="Research Objectives"}
+
+
+<h1>Research Objectives</h1>
+
+Our analysis addresses three core pillars of investigation:
+
+::: {.question-box}
+**1. Is there any correlation between different types of Beverage and the Alzheimer’s indicators?**
+:::
+
+::: {.question-box}
+**2. Is there a statistically significant correlation between a state's per-capita ethanol consumption and its reported Alzheimer’s indicators?**
+:::
+
+::: {.question-box}
+**3. Is the change in Alzheimer’s indicators related to the change in alcohol consumption?**
+:::
+
+**Note on Ethics:**This analysis is vital because it moves beyond individual biology to look at community-level patterns. Understanding these correlations can help state health departments forecast future caregiving needs and tailor public health messaging. However, we must consider ethical limitations: these datasets rely on "apparent" consumption (tax records) and subjective self-reporting, which may underrepresent vulnerable populations or those without regular access to healthcare.
+
+
+## Row 3 {.tabset height=auto}
+
+### Row 3 Column 1: Alzheimer's Dataset {title="Data Context: CDC"}
+<h1>Data Context: CDC</h1>
+**Dataset:**[CDC Healthy Aging](https://data.cdc.gov/Healthy-Aging/Alzheimer-s-Disease-and-Healthy-Aging-Data/hfr9-rurv/about_data)  
+
+**Sample Description:** The sample for this dataset is derived from the Behavioral Risk Factor Surveillance System (BRFSS), an annual telephone survey conducted across all 50 states, D.C., and several territories. The survey measures self-reported health behaviors and conditions, specifically focusing on adults aged 45 and older for the "Cognitive Decline" module. Between 2015 and 2022, the dataset recorded over 22,000 specific state-level indicators, including the percentage of adults reporting subjective memory loss and the resulting functional difficulties. This sample is robust for identifying broad population trends and regional disparities in brain health. However, a shortcoming is the reliance on "Subjective Cognitive Decline" (SCD), which measures how people perceive their memory rather than clinical diagnoses, potentially leading to bias based on health literacy or cultural attitudes toward aging.
+
+
+### Row 3 Column 2: Alcohol Consumption Dataset {title="Data Context: NIAAA"}
+
+<h1>Data Context: NIAAA</h1>
+**Dataset:** [NIAAA Surveillance](https://www.niaaa.nih.gov/publications/surveillance-reports/surveillance121)  
+
+**Sample Description:** The NIAAA dataset records the "apparent" consumption of alcohol based on state tax records, sales data, and shipment reports rather than individual surveys. This data spans from 1977 to 2022 and provides specific ethanol-per-capita measurements for beer, wine, and spirits for every state and region in the U.S. Each record represents a yearly aggregate of the total volume of alcohol sold divided by the population aged 14 and older. Because it is based on tax and sales data, it captures nearly the entire legal commercial market, providing a highly accurate view of state-level supply. A significant benefit is its long-term consistency, allowing for longitudinal analysis. A major shortcoming, however, is that it does not account for cross-border sales (e.g., individuals buying alcohol in a neighboring state with lower taxes) or home-brewed products, which may distort the consumption rates in certain geographical clusters.
+
+## Row 4 {height=auto}
+
+### Row 4 Column 1: Group Information {title="Topic Interest & Group Info"}
+
+::: {.card title="Group Information"}
+Our group is passionate about exploring how lifestyle choices impact long-term geriatric health outcomes to better inform public policy.
+
+* **Alina Yuan** (Amath): Checking the feasibility of data and integrating data, Exploratory analysis & visualization.
+
+* **Chris Dai** (Intended Business):  Exploring data merging strategy, specifically developing longitudinal time models to account for the cumulative biological impact of alcohol use on cognitive health.
+
+* **Jason Chen** (Amath & Math): Conduct data cleaning of the CDC Alzheimer’s dataset, implement filtering protocols for the ‘Overall’ stratifications to isolate sensitive health indicators.
+:::
+
+
+# Geographic & Beverage-Type Patterns
+
+## Row {height=auto}
+
+::: {.card}
+### Analysis: Geography and Beverage Type 
+This section combines two question by looking at (1) how subjective cognitive decline (SCD) rates vary geographically and over time, and (2) how **beer, wine, and spirits** consumption patterns differ by state. 
+
+We focused on presenting two aspects of this content. The first aspect was to provide viewers with basic descriptive visualizations to help them establish an initial understanding of the overall trends and regional differences in the data. The second aspect was to explore whether there was a correlation between the decline in awareness levels and certain specific types.
+:::
+
+## Row {.tabset height=auto}
+### 2015 Baseline {title="Year: 2015"}
+
+This map establishes the 2015 baseline for memory loss prevalence. It helps answer our question by showing that cognitive decline was already a localized public health issue in 2015, particularly in the Southeast. This provides the necessary "Point A" to measure subsequent shifts.
+
+```{r}
+#| message: false
+#| warning: false
+library(plotly)
+
+# Filter for 2015
+map_2015_data <- alz_clean %>%
+  filter(year == 2015) %>%
+  group_by(state) %>%
+  summarize(val = mean(Data_Value, na.rm = TRUE))
+
+current_min_2015 <- min(map_2015_data$val, na.rm = TRUE)
+current_max_2015 <- max(map_2015_data$val, na.rm = TRUE)
+# Create 2015 Map
+plot_geo(map_2015_data, locationmode = 'USA-states') %>%
+  add_trace(
+    z = ~val, 
+    locations = ~state, 
+    color = ~val,
+    colorscale = "Viridis", 
+    reversescale = FALSE,
+    colorbar = list(title = "SCD Rate (%)"),
+    # This forces the color scale to use the exact range of your data
+    zmin = current_min_2015, 
+    zmax = current_max_2015 
+  ) %>%
+  layout(
+    title = list(text = "Subjective Cognitive Decline Prevalence (2015)", x = 0.5),
+    geo = list(
+      scope = 'usa', 
+      projection = list(type = 'albers usa'),
+      lakecolor = toRGB('white')
+    )
+  )
+```
+
+
+### 2022 Distribution {title="Year: 2022"}
+
+This 2022 snapshot highlights current high-prevalence areas. While data reporting varies by state each year, this visualization allows us to see if the "hotspots" identified in 2015 have persisted, expanded, or shifted to new regions over time.
+
+```{r}
+#| message: false
+#| warning: false
+
+# Filter for 2022
+map_2022_data <- alz_clean %>%
+  filter(year == 2022) %>%
+  group_by(state) %>%
+  summarize(val = mean(Data_Value, na.rm = TRUE))
+
+current_min_2022 <- min(map_2022_data$val, na.rm = TRUE)
+current_max_2022 <- max(map_2022_data$val, na.rm = TRUE)
+
+# Create 2022 Map
+plot_geo(map_2022_data, locationmode = 'USA-states') %>%
+   add_trace(
+    z = ~val, 
+    locations = ~state, 
+    color = ~val,
+    colorscale = "Viridis", 
+    reversescale = FALSE,
+    colorbar = list(title = "SCD Rate (%)"),
+    # This forces the color scale to use the exact range of your data
+    zmin = current_min_2022, 
+    zmax = current_max_2022 
+  ) %>%
+  layout(
+    title = list(text = "Subjective Cognitive Decline Prevalence (2022)", x = 0.5),
+    geo = list(
+      scope = 'usa', 
+      projection = list(type = 'albers usa'),
+      lakecolor = toRGB('white')
+    )
+  )
+```
+
+
+## Row {height=20%}
+
+### 2015 National Average
+::: {.valuebox icon="calendar-event" color="info" title="2015 National Average"}
+`r paste0(round(mean(map_2015_data$val, na.rm = TRUE), 1), "%")`
+:::
+
+### 2022 National Average
+::: {.valuebox icon="calendar-check" color="primary" title="2022 National Average"}
+`r paste0(round(mean(map_2022_data$val, na.rm = TRUE), 1), "%")`
+:::
+
+### Total States Analyzed
+::: {.valuebox icon="map" color="secondary" title="Total States Analyzed"}
+`r length(unique(alz_clean$state))`
+:::
+
+
+## Row {height=auto}
+
+### Interactive Geographic Analysis {title="SCD Rates by State (2015-2022)"}
+
+This map directly calculates the difference between 2022 and 2015. It is the primary tool for answering Question 1, as it isolates the trend: Red indicates worsening cognitive health, while Blue shows improvement. This removes the "noise" of raw percentages to show pure geographical change.
+
+```{r}
+#| label: map-visualization
+#| title: "Shift in Cognitive Decline (2015-2022)"
+#| message: false
+#| warning: false
+
+library(tidyverse)
+library(plotly)
+
+map_data <- alz_clean %>%
+  filter(year %in% c(2015, 2022)) %>%
+  group_by(state, year) %>%
+  summarize(mean_value = mean(Data_Value, na.rm = TRUE), .groups = "drop") %>%
+  pivot_wider(names_from = year, values_from = mean_value, names_prefix = "year_") %>%
+  mutate(
+    shift_2015_to_2022 = year_2022 - year_2015,
+    hover_text = paste0(
+      "<b>State:</b> ", state, "<br>",
+      "<b>2015 Avg Rate:</b> ", round(year_2015, 2), "%<br>",
+      "<b>2022 Avg Rate:</b> ", round(year_2022, 2), "%<br>",
+      "<b>Net Shift:</b> ", round(shift_2015_to_2022, 2), "%"
+    )
+  ) %>%
+  filter(!is.na(shift_2015_to_2022))
+
+fig <- plot_geo(map_data, locationmode = 'USA-states') %>%
+  add_trace(
+    z = ~shift_2015_to_2022,
+    text = ~hover_text,
+    hoverinfo = "text",
+    locations = ~state,
+    color = ~shift_2015_to_2022,
+    colors = "RdBu",       
+    reversescale = TRUE,    
+    colorbar = list(title = "Shift (%)")  
+  ) %>%
+  layout(
+    title = list(text = "Change in Subjective Cognitive Decline Rates (2015 to 2022)", font = list(size = 16)),
+    geo = list(
+      scope = 'usa',
+      projection = list(type = 'albers usa'),
+      showlakes = TRUE, 
+      lakecolor = toRGB('white')
+    )
+  )
+
+fig
+```
+
+Overall, there are significant spatial differences among different states: some states in the northern and central parts or the central and western parts have shown a more obvious increase, while some states in the west and the southeast have experienced a decrease or a slight change.
+The states with the most significant and severe increase in the proportion of subjective cognitive decline from 2015 to 2022 were mainly Iowa and Michigan: both showed the deepest red color, indicating the largest net increase in the proportion of cognitive decline and the most prominent deterioration trend.
+Conversely, the states that improved the most were concentrated in Oregon and Arizona (followed by South Carolina): these states showed the deepest blue color, representing the largest net decrease in the proportion of cognitive decline from 2015 to 2022, and the best overall improvement effect.
+
+
+
+## Beverage Type Breakdown
+
+## Row {height=auto}
+
+::: {.card}
+### Analysis: Spirits, Wine, and Beer 
+Here we disaggregate "All Beverages" into **Beer, Wine, and Spirits** to check whether beverage preferences differ systematically across states (a geographic pattern) and whether any beverage type appears more aligned with cognitive decline indicators. National averages often mask regional preferences. By disaggregating "All Beverages" into **Beer, Wine, and Spirits**, we can observe if specific drinking cultures (e.g., states with high spirits consumption) align more closely with cognitive decline indicators. We use `pivot_longer()` to tidy the beverage data and a **Boxplot** to visualize the distribution and identify outliers across the 50 states.
+:::
+
+## Row {height=auto}
+
+### Beverage Comparison {title="Distribution of Ethanol Consumption by Beverage Type"}
+
+```{r}
+#| message: false
+#| warning: false
+#| echo: false
+
+# 1. Prepare data for Question 3 (Tool: filter & pivot_wider)
+# We need to extract the individual beverage types from the rows
+bev_data <- alcohol_data %>%
+  # Filter for the three main types, excluding 'All beverages'
+  filter(beverage_name %in% c("Beer", "Wine", "Spirits")) %>%
+  select(
+    state = location_abbr, 
+    year, 
+    beverage_name, 
+    ethanol_amount = ethanol_pc_21plus
+  )
+
+# 2. Create the Boxplot (Tool: Distinct Graph Type + Color)
+# This satisfies the requirement for a second distinct graph type
+p3 <- ggplot(bev_data, aes(x = beverage_name, y = ethanol_amount, fill = beverage_name)) +
+  geom_boxplot(alpha = 0.7, outlier.colour = "red") +
+  scale_fill_brewer(palette = "Pastel1") +
+  labs(
+    x = "Beverage Category",
+    y = "Ethanol Per Capita (Gallons)",
+    fill = "Beverage Type",
+    title = "Regional Variation in Alcohol Preferences (2015-2022)"
+  ) +
+  theme_minimal()
+
+# Make it interactive
+ggplotly(p3)
+```
+## Row {height=auto}
+
+```{r}
+#| message: false
+#| warning: false
+
+library(dplyr)
+library(plotly)
+
+
+pref_df <- alcohol_data %>%
+  filter(year >= 2015, year <= 2022,
+         beverage_name %in% c("Beer", "Wine", "Spirits")) %>%
+  group_by(location_abbr, beverage_name) %>%
+  summarise(mean_ethanol = mean(ethanol_pc_21plus, na.rm = TRUE), .groups = "drop") %>%
+  group_by(location_abbr) %>%
+  slice_max(mean_ethanol, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  mutate(
+    state = location_abbr,
+    preference = beverage_name,
+    code = case_when(
+      preference == "Beer" ~ 0,
+      preference == "Spirits" ~ 1,
+      preference == "Wine" ~ 2
+    ),
+    hover = paste0(
+      "State: ", state,
+      "<br>Preferred: ", preference,
+      "<br>Avg ethanol (2015–2022): ", round(mean_ethanol, 2)
+    )
+  )
+
+
+disc_colors <- list(
+  list(0.00, "#f4b6b6"), list(0.3333, "#f4b6b6"),  # Beer
+  list(0.3334, "#b7d3f2"), list(0.6666, "#b7d3f2"),# Spirits
+  list(0.6667, "#bfe6c2"), list(1.00, "#bfe6c2")   # Wine
+)
+
+plot_geo(pref_df, locationmode = "USA-states") %>%
+  add_trace(
+    z = ~code,
+    locations = ~state,
+    text = ~hover,
+    hoverinfo = "text",
+    colorscale = disc_colors,
+    zmin = 0, zmax = 2,
+    colorbar = list(
+      title = "Preference",
+      tickmode = "array",
+      tickvals = c(0, 1, 2),
+      ticktext = c("Beer", "Spirits", "Wine")
+    )
+  ) %>%
+  layout(
+    title = list(text = "State-Level Beverage Preference (Dominant Type, 2015–2022)", x = 0.5),
+    geo = list(
+      scope = "usa",
+      projection = list(type = "albers usa"),
+      lakecolor = toRGB("white")
+    )
+  )
+```
+
+### Analysis
+
+**Box plot:** Overall distribution differences of Beverage type.
+
+The median of Beer is the highest, indicating that in the overall sample from 2015 to 2022, the per capita ethanol consumption of beer was higher in the majority of states. 
+Outliers for Spirits are the most numerous and the upper tail is longer: A few states have particularly high consumption of spirits, pulling the upper limit very high; this suggests that "preference for spirits" may be more regionally concentrated or culturally diverse. 
+The median of Wine is the lowest and the IQR is relatively small: the overall consumption of wine is relatively low and the inter-state differences are not as exaggerated (more concentrated).
+
+**Dominant type of each state: **Dominant type is defined as the beverage with the highest average ethanol per capita during 2015–2022 for each state.On the map, it can be seen that most states are dominated by Beer or Spirits. The states where Wine is the dominant factor are significantly fewer (this is consistent with the fact that wine is generally lower in the box plot). 
+
+**Relationship:** By comparing these preference patterns with the map of cognitive decline levels (2015-2022), we did not observe any significant geographical correlations. For states with similar main beverage types, the trends of cognitive levels or changes over time were not consistent. Moreover, since the cognitive level maps in the combined dataset lack data for many states, any apparent regional patterns should be interpreted with caution.
+
+
+# Statistical Correlation
+
+## Row {height=auto}
+
+::: {.card}
+### Analysis: Consumption vs. Cognition
+This section addresses **Question 2: Is there a statistically significant correlation between a state's per-capita ethanol consumption and its reported Alzheimer’s indicators?** 
+
+We use a scatterplot to visualize the relationship between total ethanol per capita (X-axis) and the percentage of the population reporting cognitive decline (Y-axis).
+
+:::
+
+## Row {height=600px}
+
+### Correlation Plot {title="Ethanol Consumption vs. SCD Rates"}
+```{r}
+#| message: false
+#| warning: false
+
+# Basic Tool: mutate to add labels for the hover tool
+# Basic Tool: filter was used in previous setup chunks to create combined_clean
+
+p2 <- ggplot(combined_clean, aes(x = alcohol_consumption_pc, y = Data_Value)) +
+  geom_point(aes(color = alcohol_group, text = paste("State:", state, "<br>Year:", year)), 
+             alpha = 0.6, size = 2) +
+  geom_smooth(method = "lm", color = "black", se = TRUE, linetype = "dashed") +
+  scale_color_brewer(palette = "Set1") +
+  labs(
+    x = "Alcohol Consumption Per Capita (Gallons of Ethanol)",
+    y = "Subjective Cognitive Decline Rate (%)",
+    color = "Consumption Tier"
+  ) +
+  theme_minimal()
+
+# Create interactive plot
+ggplotly(p2, tooltip = "text")
+```
+
+## Row {height=15%}
+
+### Pearson Correlation (R)
+::: {.valuebox icon="graph-up" color="info" title="Pearson Correlation (R)"}
+`r round(cor(combined_clean$alcohol_consumption_pc, combined_clean$Data_Value, use = "complete.obs"), 3)`
+:::
+
+### Regression Slope
+::: {.valuebox icon="reception-4" color="primary" title="Regression Slope"}
+`r round(coef(lm(Data_Value ~ alcohol_consumption_pc, data = combined_clean))[2], 3)`
+:::
+
+### Sample Size (N)
+::: {.valuebox icon="people" color="secondary" title="Sample Size (N)"}
+`r nrow(combined_clean)`
+:::
+
+## Row {height=auto}
+### Statistical Interpretation
+
+The scatterplot reveals a **Pearson Correlation Coefficient (R) of -0.071**. In statistics, an R-value so close to zero indicates a very weak linear relationship. While the negative sign suggests a slight downward trend, the magnitude is negligible, meaning alcohol consumption per capita is not a strong predictor of SCD rates in this specific dataset.
+
+The **Regression Slope of -1.697** suggests that for every one-unit increase in gallons of ethanol consumed per capita, the SCD rate is associated with a 1.697 percentage point decrease. 
+
+ A reasonable explanation for this is that this relationship is likely "masked" by other stronger structural factors: different states vary greatly in terms of the degree of aging, educational and income levels, medical accessibility, diagnosis/screening rates, population structure and chronic disease burden, as well as urbanization. These factors not only affect drinking patterns but also influence the reporting and detection of Alzheimer's indicators.
+ 
+Furthermore, the Alzheimer-related risks are often the result of long-term accumulation, and our per capita ethanol consumption is closer to a certain period's level. Without including decades of historical drinking exposure or time lag effects, it is more difficult to observe a clear statistical association in the current cross-sectional comparison.
+
+
+
+
+# Alcohol Change vs Alzheimer’s Change
+
+## Row {height=auto}
+
+::: {.card}
+### Analysis: Change in Consumption vs. Change in Alzheimer’s Indicators
+This section addresses **Question 3: From 2015 to 2022, is the change in a state's per-capita ethanol consumption associated with the change in its Alzheimer’s (or cognitive decline) indicator?**
+
+Instead of comparing raw levels, we compute **within-state shifts** over time:
+- \(\Delta Alcohol = Alcohol_{2022} - Alcohol_{2015}\)
+- \(\Delta Alzheimer = DataValue_{2022} - DataValue_{2015}\)
+
+We then use a scatterplot to visualize whether states with larger increases (or decreases) in alcohol consumption also show corresponding worsening (or improvement) in brain health outcomes.
+:::
+
+## Row {height=auto}
+
+### Shift Correlation Plot {title="Change in Ethanol Consumption vs. Change in Alzheimer’s Indicator (2015–2022)"}
+```{r}
+#| message: false
+#| warning: false
+
+
+# Basic Tool: filter + group_by + summarise to compute per-state shifts (2022 - 2015)
+shift_df <- combined_clean %>%
+  filter(year %in% c(2015, 2022)) %>%
+  group_by(state) %>%
+  summarise(
+    alcohol_2015 = alcohol_consumption_pc[year == 2015][1],
+    alcohol_2022 = alcohol_consumption_pc[year == 2022][1],
+    alz_2015     = Data_Value[year == 2015][1],
+    alz_2022     = Data_Value[year == 2022][1],
+    .groups = "drop"
+  ) %>%
+  mutate(
+    delta_alcohol = alcohol_2022 - alcohol_2015,
+    delta_alz     = alz_2022 - alz_2015,
+    hover_text = paste0(
+      "State: ", state,
+      "<br>Δ Alcohol: ", round(delta_alcohol, 3),
+      "<br>Δ Alzheimer: ", round(delta_alz, 3)
+    )
+  ) %>%
+  filter(!is.na(delta_alcohol), !is.na(delta_alz))
+
+# Scatterplot + regression line
+p_shift <- ggplot(shift_df, aes(x = delta_alcohol, y = delta_alz)) +
+  geom_hline(yintercept = 0, linetype = "dashed", alpha = 0.5) +
+  geom_vline(xintercept = 0, linetype = "dashed", alpha = 0.5) +
+  geom_point(aes(text = hover_text), alpha = 0.7, size = 2) +
+  geom_smooth(method = "lm", color = "black", se = TRUE, linetype = "dashed") +
+  labs(
+    x = "Δ Alcohol Consumption Per Capita (2022 − 2015)",
+    y = "Δ Alzheimer’s Indicator (2022 − 2015)"
+  ) +
+  theme_minimal()
+
+# Create interactive plot
+ggplotly(p_shift, tooltip = "text")
+```
+
+This scatterplot compares the change in per-capita alcohol consumption and the change in the Alzheimer’s indicator between 2015 and 2022 across states. Each point represents one state. The x-axis shows how much alcohol consumption changed, while the y-axis shows how much the Alzheimer’s-related indicator changed over the same period.
+
+The dashed regression line slopes slightly upward, suggesting a weak positive relationship overall, but the wide confidence band and scattered points indicate substantial variation across states and a relatively weak association.
+
+Although the fitted regression line has a slight upward slope, the points are widely dispersed and the confidence band is broad, indicating substantial uncertainty and weak explanatory power. Overall, the pattern implies that changes in alcohol consumption alone do not reliably track changes in Alzheimer’s-related outcomes at the state level over this period.
+
+
+
+
+# Conclusion & Summary {orientation="rows"}
+
+## Row {height=auto}
+
+::: {.card title="Major Takeaways & Research Answers"}
+### Answering the Big Picture Questions
+
+Our analysis of state-level data from 2015 to 2022 yielded three major takeaways regarding the intersection of alcohol consumption and cognitive health. 
+
+First, in answering our **geographic shift** question, we observed that subjective cognitive decline (SCD) varies significantly across different regions, indicating that the burden of cognitive health in the United States is not evenly distributed. However, there was no significant correlation between them and different types of alcohol consumption.
+
+Second, regarding our core **statistical correlation** question, we found a lack of significant linear correlation between a state's total per-capita ethanol consumption and its SCD rates. As noted in our visualizations, at the population level, state-wide alcohol consumption is unlikely to be the primary driver of Alzheimer’s trends compared to dominant factors like state-level age structure and genetics. 
+
+Third, regrading **the change in the variation **. By comparing the changes in alcohol consumption among different states from 2015 to 2022, we found that these changes had no significant correlation with the changes in Alzheimer's disease.. 
+:::
+
+## Row {height=auto}
+
+::: {.card title="Estimation Biases: Underestimating the Impact"}
+### Evaluating Our Measurements
+
+In this project, we examined the relationship between alcohol consumption and the prevalence of Alzheimer’s disease by using state-level data. Our result of data analysis shows that the correlation between these two variables is close to zero. In other words, based on the dataset we used, alcohol consumption does not appear to be related with Alzheimer’s prevalence across states in US. 
+
+### Why the Correlation May Be Weak or Underestimated
+
+Based on our sample and measurements, we believe our analysis likely **underestimates** the true relationship between heavy alcohol use and cognitive decline. One important reason lies in the limitations of the two datasets themselves. The CDC dataset is based on the BRFSS, an annual telephone survey, which likely underestimates severe cognitive decline because individuals with advanced Alzheimer’s disease or dementia are much less likely to participate in or complete phone surveys. As a result, the dataset mainly captures **Subjective Cognitive Decline (SCD)** among relatively healthier members of the aging population rather than the most severe clinical cases.
+
+Similarly, the NIAAA alcohol dataset measures “apparent” alcohol consumption through tax and sales records rather than individual behavior. Although this provides a strong estimate of state-level market supply, it also creates an ecological fallacy: alcohol consumption is averaged across the entire adult population, which masks important variation within states. The harmful neurological effects of alcohol are likely driven more by chronic heavy drinking than by average consumption. Therefore, dividing total alcohol sold by the whole 21+ population may hide the specific localized drinking patterns that are more relevant to alcohol-related cognitive damage.
+
+From a pathological perspective, the weak correlation in our findings is also understandable. Alzheimer’s disease is primarily associated with the accumulation of **beta-amyloid plaques** and **tau protein tangles** in the brain, which progressively damage neurons and impair memory and cognition. Its development is strongly linked to **aging** and **genetic risk factors**, especially the **APOE-ε4** allele. These biological mechanisms are fundamentally different from the main ways alcohol affects health.
+
+Chronic alcohol use can certainly damage the brain, but it typically does so through other pathways, such as **neurotoxicity**, **nutritional deficiencies** (for example, vitamin B1 deficiency), and **liver dysfunction**. These mechanisms may also lead to cognitive impairment, but such cases are more often classified clinically as **alcohol-related dementia** rather than Alzheimer’s disease. Because these diagnoses are recorded separately in medical and population datasets, the distinction may partly explain why our analysis does not show a strong statistical relationship between alcohol consumption and Alzheimer’s prevalence specifically.
+
+Another major factor is **age structure**. Age is the strongest known risk factor for Alzheimer’s disease, so differences in the age distribution across states may have a much larger effect on prevalence rates than differences in alcohol consumption. For example, states with older populations may naturally show higher Alzheimer’s prevalence even if alcohol use is relatively low. In addition, the relationship between alcohol and cognitive decline may be **nonlinear**: moderate drinking may have little measurable effect, while heavy drinking may substantially increase risk. When alcohol use is averaged at the state level, this kind of nonlinear effect may be obscured.
+
+Overall, our findings suggest that alcohol consumption is unlikely to be a primary pathological driver of Alzheimer’s disease at the population level. However, this does not mean alcohol has no effect on brain health. Alcohol can still contribute to other neurological conditions and other forms of dementia, all of which remain important public health concerns.
+
+:::
+
+## Row {height=auto}
+
+::: {.card title="Future Directions"}
+### Moving Beyond State-Level Aggregates
+
+Future research can be advanced in several directions. First, to address these broader questions more accurately, studies need to move beyond state-level ecological data and shift toward individual-level comparisons. Compared with state averages, such data can track detailed drinking patterns over decades and link them to clinically diagnosed dementia outcomes, allowing for a more precise assessment of the relationship between alcohol use and cognitive decline.
+
+Second, future studies should distinguish between different levels of alcohol consumption, such as moderate drinking and heavy drinking, in order to test for possible nonlinear effects. Even if state-level data continue to be used, subsequent analyses should explicitly incorporate age-adjusted prevalence rates, since age is one of the most important risk factors for Alzheimer’s disease. States with older populations, such as Florida or Maine, may naturally show higher prevalence regardless of their drinking culture.
+
+In addition, including variables such as educational attainment, socioeconomic status, genetic risk, and other demographic factors may help explain more of the variation across states. Finally, further distinguishing the specific clinical coding of alcohol-related dementia from general Alzheimer’s disease diagnoses would help isolate the exact biological outcome we are trying to measure.
+
+Overall, our analysis suggests that Alzheimer’s disease is a complex condition shaped by multiple biological, behavioral, and demographic factors. Alcohol consumption alone does not explain the differences observed across states, but examining its interaction with other factors may deepen our understanding of brain health and dementia risk.
+:::
+
